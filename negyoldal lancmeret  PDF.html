@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <title>Láncméret kalkulátor – 4 oldal PDF exporttal</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 16px;
+            background: #f5f5f5;
+        }
+        h1, h2 {
+            text-align: center;
+        }
+        label {
+            font-weight: bold;
+        }
+        input[type="number"], input[type="text"], select {
+            padding: 6px;
+            font-size: 16px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+            background: white;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 6px;
+            text-align: center;
+        }
+        th {
+            background: #e0e0e0;
+        }
+        button {
+            padding: 10px 18px;
+            margin-top: 12px;
+            margin-right: 8px;
+            font-size: 16px;
+        }
+        .result {
+            margin-top: 16px;
+            padding: 12px;
+            background: #fff;
+            border: 1px solid #ccc;
+        }
+        .ok {
+            color: #1b5e20;
+            font-weight: bold;
+        }
+        .error {
+            color: #b71c1c;
+            font-weight: bold;
+        }
+        .section {
+            margin-top: 40px;
+            padding: 20px;
+            background: #ffffff;
+            border: 2px solid #ccc;
+        }
+    </style>
+
+    <!-- PDF generáláshoz szükséges könyvtár -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+
+<h1>Láncméret kalkulátor – A, B, C, D oldal</h1>
+
+<!-- Globális mezők -->
+<div>
+    <label>Szerelési egység: </label>
+    <input type="text" id="unitName" style="width: 300px;">
+</div>
+
+<div style="margin-top: 10px;">
+    <label>Pozíció szám: </label>
+    <input type="text" id="positionNumber" style="width: 150px;">
+</div>
+
+<div style="margin-top: 10px;">
+    <label>Teljes hossz (mm): </label>
+    <input type="number" id="totalLength" value="1000" style="width: 150px;">
+</div>
+
+<script>
+// Egy oldal HTML blokkjának dinamikus létrehozása
+function createSection(id, title) {
+    return `
+    <div class="section" id="section_${id}">
+        <h2>${title}</h2>
+
+        <table>
+            <thead>
+            <tr>
+                <th>Pozíció</th>
+                <th>Méret vagy alkatrész?</th>
+                <th>Alkatrész szám</th>
+                <th>Méret (mm)</th>
+                <th>Láncméret (mm)</th>
+            </tr>
+            </thead>
+            <tbody id="rows_${id}"></tbody>
+        </table>
+
+        <button onclick="addRow('${id}')">+ Új méret</button>
+        <button onclick="calculate('${id}')">Összegzés</button>
+        <button onclick="exportPDF('${id}')">PDF export</button>
+
+        <div class="result">
+            <div>Összeg: <span id="sum_${id}">0</span> mm</div>
+            <div>Maradék: <span id="diff_${id}">0</span> mm</div>
+            <div id="status_${id}"></div>
+        </div>
+    </div>
+    `;
+}
+
+// Négy oldal létrehozása
+document.write(createSection("A", "A oldal"));
+document.write(createSection("B", "B oldal"));
+document.write(createSection("C", "C oldal"));
+document.write(createSection("D", "D oldal"));
+
+// Pozíciószámlálók oldalanként
+let positions = { A: 1, B: 1, C: 1, D: 1 };
+
+// Új sor hozzáadása adott oldalhoz
+function addRow(id) {
+    const rowsBody = document.getElementById(`rows_${id}`);
+
+    const tr = document.createElement('tr');
+
+    // Pozíció
+    const tdPos = document.createElement('td');
+    tdPos.textContent = positions[id];
+
+    // Méret vagy alkatrész?
+    const tdType = document.createElement('td');
+    const selectType = document.createElement('select');
+    selectType.innerHTML = `
+        <option value="meret">Méret</option>
+        <option value="alkatresz">Alkatrész</option>
+    `;
+    tdType.appendChild(selectType);
+
+    // Alkatrész szám
+    const tdPart = document.createElement('td');
+    const inputPart = document.createElement('input');
+    inputPart.type = 'text';
+    inputPart.disabled = true;
+    tdPart.appendChild(inputPart);
+
+    // Méret (mm)
+    const tdSize = document.createElement('td');
+    const inputSize = document.createElement('input');
+    inputSize.type = 'number';
+    inputSize.min = '0';
+    inputSize.style.width = '100px';
+    tdSize.appendChild(inputSize);
+
+    // Láncméret
+    const tdChain = document.createElement('td');
+    tdChain.className = 'chainCell';
+
+    // Logika: alkatrész esetén engedélyezés
+    selectType.addEventListener('change', () => {
+        const isPart = selectType.value === 'alkatresz';
+        inputPart.disabled = !isPart;
+        if (!isPart) inputPart.value = "";
+    });
+
+    tr.appendChild(tdPos);
+    tr.appendChild(tdType);
+    tr.appendChild(tdPart);
+    tr.appendChild(tdSize);
+    tr.appendChild(tdChain);
+
+    rowsBody.appendChild(tr);
+    positions[id]++;
+}
+
+// Összegzés és kumulált láncméret számítás adott oldalon
+function calculate(id) {
+    const total = parseFloat(document.getElementById('totalLength').value) || 0;
+    let sum = 0;
+
+    const rows = document.querySelectorAll(`#rows_${id} tr`);
+
+    rows.forEach(row => {
+        const sizeInput = row.querySelector('input[type="number"]');
+        const chainCell = row.querySelector('.chainCell');
+
+        const value = parseFloat(sizeInput.value);
+
+        if (!isNaN(value)) {
+            sum += value;
+            chainCell.textContent = sum;
+        } else {
+            chainCell.textContent = '';
+        }
+    });
+
+    const diff = total - sum;
+
+    document.getElementById(`sum_${id}`).textContent = sum;
+    document.getElementById(`diff_${id}`).textContent = diff;
+
+    const status = document.getElementById(`status_${id}`);
+    if (diff === 0) {
+        status.textContent = "Pontosan kijön a lánc.";
+        status.className = "ok";
+    } else {
+        status.textContent = "Nem jön ki pontosan! Ellenőrizd a méreteket.";
+        status.className = "error";
+    }
+}
+
+// PDF export egy adott oldalról
+function exportPDF(id) {
+    const element = document.getElementById(`section_${id}`);
+
+    const opt = {
+        margin:       10,
+        filename:     `${id}_oldal.pdf`,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2 },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    html2pdf().set(opt).from(element).save();
+}
+
+// Kezdésnek minden oldalra 5 sor
+["A","B","C","D"].forEach(id => {
+    for (let i = 0; i < 5; i++) addRow(id);
+});
+</script>
+
+</body>
+</html>
